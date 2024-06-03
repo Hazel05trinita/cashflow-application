@@ -1,0 +1,134 @@
+import tkinter as tk
+from tkinter import filedialog, messagebox
+from datetime import datetime
+import mysql.connector
+
+class BudgetTrackerApp:
+    def __init__(self, master):
+        self.master = master
+        self.master.title("Budget Tracker")
+        self.master.geometry("500x500")
+        self.master.configure(bg="sky blue")
+
+        self.transaction_history = ""
+        self.total_cash = 0
+
+        self.amount_label = tk.Label(master, text="Enter Amount:")
+        self.amount_label.pack(pady=5)
+
+        self.amount_entry = tk.Entry(master)
+        self.amount_entry.pack(pady=5)
+
+        self.notes_label = tk.Label(master, text="Enter Reason:")
+        self.notes_label.pack(pady=5)
+
+        self.notes_entry = tk.Entry(master)
+        self.notes_entry.pack(pady=5)
+
+        self.cash_in_button = tk.Button(master, text="Cash In", command=self.cash_in)
+        self.cash_in_button.pack(pady=5)
+
+        self.cash_out_button = tk.Button(master, text="Cash Out", command=self.cash_out)
+        self.cash_out_button.pack(pady=5)
+
+        self.history_button = tk.Button(master, text="History", command=self.show_history)
+        self.history_button.place(x=10, y=10)
+
+        self.transaction_text = tk.Text(master, height=8, width=40, state=tk.DISABLED)
+        self.transaction_text.pack(pady=5)
+
+        self.present_amount_label = tk.Label(master, text="Present Amount: ₹ 0.00")
+        self.present_amount_label.pack(pady=5)
+
+        # Connect to MySQL
+        self.conn = mysql.connector.connect(
+            host="localhost",
+            user="hazel",
+            password="trinita",
+            database="hazel"
+        )
+
+        self.cursor = self.conn.cursor()
+
+        # Create table if not exists
+        self.cursor.execute('''CREATE TABLE IF NOT EXISTS transactions
+                              (id INT AUTO_INCREMENT PRIMARY KEY, timestamp TIMESTAMP, type VARCHAR(20), amount DECIMAL(10, 2), reason VARCHAR(255))''')
+        self.conn.commit()
+
+    def cash_in(self):
+        amount = self.amount_entry.get()
+        if not amount:
+            print("Please enter an amount.")
+            return
+
+        try:
+            amount = float(amount)
+        except ValueError:
+            print("Invalid amount. Please enter a valid number.")
+            return
+
+        reason = self.notes_entry.get()
+
+        self.total_cash += amount
+        self.transaction_history += f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}: Cash In - Amount: {amount} - Reason:{reason}\n"
+        self.save_to_database("Cash In", amount, reason)
+        self.update_transaction_text()
+
+        self.amount_entry.delete(0, tk.END)
+        self.notes_entry.delete(0, tk.END)
+
+    def cash_out(self):
+        amount = self.amount_entry.get()
+        if not amount:
+            print("Please enter an amount.")
+            return
+
+        try:
+            amount = float(amount)
+        except ValueError:
+            print("Invalid amount. Please enter a valid number.")
+            return
+
+        reason = self.notes_entry.get()
+        self.total_cash -= amount
+        self.transaction_history += f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}: Cash Out - Amount: {amount} - Reason:{reason}\n"
+        self.save_to_database("Cash Out", amount, reason)
+        self.update_transaction_text()
+
+        self.amount_entry.delete(0, tk.END)
+        self.notes_entry.delete(0, tk.END)
+
+    def save_to_database(self, transaction_type, amount, reason):
+        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        sql = "INSERT INTO transactions (timestamp, type, amount, reason) VALUES (%s, %s, %s, %s)"
+        val = (timestamp, transaction_type, amount, reason)
+        self.cursor.execute(sql, val)
+        self.conn.commit()
+
+    def update_transaction_text(self):
+        self.transaction_text.config(state=tk.NORMAL)
+        self.transaction_text.delete('1.0', tk.END)
+        self.transaction_text.insert(tk.END, self.transaction_history)
+        self.transaction_text.config(state=tk.DISABLED)
+
+        if self.total_cash <= 100:
+            message = "You're running out of cash\n"
+            self.present_amount_label.config(fg="red")
+        else:
+            message = ""
+            self.present_amount_label.config(fg="green")
+
+        self.present_amount_label.config(text=f"{message}\n Present Amount:  ₹{self.total_cash:.2f}")
+
+    def show_history(self):
+        file_path = filedialog.asksaveasfilename(defaultextension=".txt", filetypes=[("Text files", "*.txt")])
+
+        if file_path:
+            with open(file_path, "w") as file:
+                file.write(self.transaction_history)
+                messagebox.showinfo("Success", "Transaction history saved successfully!")
+
+
+window = tk.Tk()
+app = BudgetTrackerApp(window)
+window.mainloop()
